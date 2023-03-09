@@ -1,6 +1,6 @@
 <?php
 
-namespace Jijoel\ValidationRuleGenerator;
+namespace ahathaway\ValidationRuleGenerator;
 
 use Illuminate\Support\ServiceProvider as LaravelServiceProvider;
 use Illuminate\Foundation\AliasLoader;

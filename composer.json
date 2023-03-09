@@ -1,16 +1,16 @@
 {
-    "name": "jijoel/validation-rule-generator",
-    "description": "Laravel 4 class to automatically generate validation rules based on table schema",
+    "name": "ahathaway/validation-rule-generator",
+    "description": "Laravel 10 class to automatically generate validation rules based on table schema",
     "keywords": ["laravel", "validation", "schema"],
     "authors": [
         {
-            "name": "Joel Hatch",
-            "email": "jijoel@yahoo.com"
+            "name": "Alex Hathaway",
+            "email": "alex@hathaway.xyz"
         }
     ],
     "require": {
         "php": ">=7.2.0",
-        "illuminate/support": "~5.5",
+        "laravel/framework": ">=5.5.0",
         "doctrine/dbal": "^2.9@dev"
     },
     "require-dev": {
@@ -20,7 +20,7 @@
     },
     "autoload": {
         "psr-4": {
-            "Jijoel\\ValidationRuleGenerator\\": "src/"
+            "ahathaway\\ValidationRuleGenerator\\": "src/"
         }
     },
     "autoload-dev": {
@@ -31,10 +31,10 @@
     "extra": {
         "laravel": {
             "providers": [
-                "Jijoel\\ValidationRuleGenerator\\ServiceProvider"
+                "ahathaway\\ValidationRuleGenerator\\ServiceProvider"
             ],
             "aliases": {
-                "ValidationRuleGenerator": "Jijoel\\ValidationRuleGenerator\\Facade"
+                "ValidationRuleGenerator": "ahathaway\\ValidationRuleGenerator\\Facade"
             }
         }
     },

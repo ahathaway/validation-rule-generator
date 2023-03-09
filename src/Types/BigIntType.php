@@ -1,6 +1,6 @@
 <?php
 
-namespace Jijoel\ValidationRuleGenerator\Types;
+namespace ahathaway\ValidationRuleGenerator\Types;
 
 
 class BigIntType

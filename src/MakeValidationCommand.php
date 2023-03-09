@@ -1,6 +1,6 @@
 <?php
 
-namespace Jijoel\ValidationRuleGenerator;
+namespace ahathaway\ValidationRuleGenerator;
 
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Input\InputOption;

@@ -1,6 +1,6 @@
 <?php
 
-namespace Jijoel\ValidationRuleGenerator;
+namespace ahathaway\ValidationRuleGenerator;
 
 use InvalidArgumentException;
 // use Illuminate\Console\DetectsApplicationNamespace;
