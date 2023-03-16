@@ -1,9 +1,14 @@
 <?php
+/*
+ * Copyright (c) Portland Web Design, Inc 2023.
+ */
 
 namespace ahathaway\ValidationRuleGenerator;
 
 use InvalidArgumentException;
-// use Illuminate\Console\DetectsApplicationNamespace;
+use ReflectionClass;
+
+//use Illuminate\Console\DetectsApplicationNamespace;
 
 class Generator
 {
@@ -18,19 +23,24 @@ class Generator
         $this->schema = new Schema($schemaManager);
     }
 
+    public static function make()
+    {
+        return new static();
+    }
+
     /**
      * Returns rules for the selected object
      *
-     * @param  string|object $table  The table or model for which to get rules
-     * @param  string $column        The column for which to get rules
-     * @param  array $rules          Manual overrides for the automatically-generated rules
-     * @param  integer $id           An id number to ignore for unique fields (current id)
+     * @param string|object $table The table or model for which to get rules
+     * @param string $column The column for which to get rules
+     * @param array $rules Manual overrides for the automatically-generated rules
+     * @param integer $id An id number to ignore for unique fields (current id)
      *
      * @return array                 Array of calculated rules for the given table/model
      */
-    public function getRules($table=null, $column=null, $rules=null, $id=null)
+    public function getRules($table = null, $column = null, $rules = null, $id = null)
     {
-        if (is_null($table) && ! is_null($column))
+        if (is_null($table) && !is_null($column))
             throw new InvalidArgumentException;
 
         if (is_object($table))
@@ -45,31 +55,48 @@ class Generator
         return $this->getUniqueRules($this->getColumnRules($table, $column, $rules), $id);
     }
 
-    public static function make()
+    public function getUniqueRules($rules, $id, $idColumn = 'id')
     {
-        return new static();
+        if (is_null($id)) return $rules;
+
+        if (!is_array($rules)) {
+            return $this->getColumnUniqueRules($rules, $id, $idColumn);
+        }
+
+        $return = [];
+        foreach ($rules as $key => $value) {
+            $return[$key] = $this->getColumnUniqueRules($value, $id, $idColumn);
+        }
+        return $return;
     }
-
-
 
     /**
-     * Return the DB-specific rules from all tables in the database
-     * (this does not contain any user-overrides)
+     * Given a set of rules, and an id for a current record,
+     * returns a string with any unique rules skipping the current record.
      *
-     * @return array   An associative array of columns and delimited string of rules
+     * @param string $rules A laravel rule string
+     * @param string|integer $id The id to skip
+     * @param string $idColumn The name of the column
+     *
+     * @return string The rules, including a string to skip the given id.
      */
-    public function getAllTableRules()
+    public function getColumnUniqueRules($rules, $id, $idColumn = 'id')
     {
-        $rules = [];
-
-        $tables = $this->schema->tables();
-        foreach($tables as $table){
-            $rules[$table] = $this->getTableRules($table);
+        $upos = strpos($rules, 'unique:');
+        if ($upos === False) {
+            return $rules;      // no unique rules for this field; return
         }
-        return $rules;
+
+        $pos = strpos($rules, '|', $upos);
+        if ($pos === False) {       // 'unique' is the last rule; append the id
+            return $rules . ',' . $id . ',' . $idColumn;
+        }
+
+        // inject the id
+        return substr($rules, 0, $pos) . ',' . $id . ',' . $idColumn . substr($rules, $pos);
     }
 
-    public function getModelRules($model, $rules=[], $column=null)
+    public function getModelRules($model, $rules = [], $column = null)
     {
         $instance = $this->getModelInstance($model);
         // $namespace = $this->getAppNamespace();
@@ -84,7 +111,7 @@ class Generator
 
     private function getModelInstance($model)
     {
-        if (is_object($model))  return $model;
+        if (is_object($model)) return $model;
 
         // $namespace = $this->getAppNamespace();
 
@@ -94,26 +121,11 @@ class Generator
     }
 
     /**
-     * Returns all rules for a given table
-     *
-     * @param  string|object $table  The name of the table to analyze
-     * @param  array  $rules    (optional) Additional (user) rules to include
-     *                          These will override the automatically generated rules
-     * @return array  An associative array of columns and delimited string of rules
-     */
-    public function getTableRules($table, $rules = null)
-    {
-        $tableRules = $this->getTableRuleArray($table);
-
-        return $this->combine->tables($rules, $tableRules);
-    }
-
-    /**
      * Returns all of the rules for a given table/column
      *
-     * @param  string $table    Name of the table which contains the column
-     * @param  string $column   Name of the column for which to get rules
-     * @param  string|array $rules    Additional information or overrides.
+     * @param string $table Name of the table which contains the column
+     * @param string $column Name of the column for which to get rules
+     * @param string|array $rules Additional information or overrides.
      * @return string           The final calculated rules for this column
      */
     public function getColumnRules($table, $column, $rules = null)
@@ -130,64 +142,86 @@ class Generator
         return $this->combine->columns($merged, $rules);
     }
 
-
-    public function getUniqueRules($rules, $id, $idColumn='id')
+    /**
+     * Returns an array of rules for a given database column, based on field information
+     *
+     * @param Doctrine\DBAL\Schema\Column $col A database column object (from Doctrine)
+     * @return array                                An array of rules for this column
+     */
+    protected function getColumnRuleArray($col)
     {
-        if (is_null($id))  return $rules;
+        $type = trim((new ReflectionClass($col->getType()))->getShortName(), " \\\t\n\r\0\x0B");
 
-        if (! is_array($rules)) {
-            return $this->getColumnUniqueRules($rules, $id, $idColumn);
+        $className = __NAMESPACE__ . "\Types\\{$type}";
+
+        try {
+            if (class_exists($className))
+                return (new $className)($col);
+        } catch (Types\SkipThisColumn $e) {
+            return [];
         }
 
-        $return = [];
-        foreach ($rules as $key => $value) {
-            $return[$key] = $this->getColumnUniqueRules($value, $id, $idColumn);
-        }
-        return $return;
+        // catch (\Exception $e) {
+        //     return ['Error: '.$type.' '.$e->getMessage()];
+        // }
+        // do not return anything for non-implemented classes
+        return ['>>>' . $className];
     }
 
     /**
-     * Given a set of rules, and an id for a current record,
-     * returns a string with any unique rules skipping the current record.
+     * Determine whether a given column should include a 'unique' flag
      *
-     * @param  string         $rules    A laravel rule string
-     * @param  string|integer $id       The id to skip
-     * @param  string         $idColumn The name of the column
-     *
-     * @return string The rules, including a string to skip the given id.
+     * @param string $table
+     * @param string $column
+     * @return array
      */
-    public function getColumnUniqueRules($rules, $id, $idColumn='id')
+    protected function getIndexRuleArray($table, $column)
     {
-        $upos = strpos($rules, 'unique:');
-        if ($upos === False) {
-            return $rules;      // no unique rules for this field; return
+        // TODO: (maybe) Handle rules for indexes that span multiple columns
+        $indexArray = [];
+        $indexList = $this->schema->indexes($table);
+
+        foreach ($indexList as $item) {
+            $cols = $item->getColumns();
+            if (in_array($column, $cols) !== false && count($cols) == 1 && $item->isUnique()) {
+
+                $indexArray['unique'] = $table . ',' . $column;
+            }
         }
 
-        $pos = strpos($rules, '|', $upos);
-        if ($pos === False) {       // 'unique' is the last rule; append the id
-            return $rules . ',' . $id . ',' . $idColumn;
-        }
-
-        // inject the id
-        return substr($rules, 0, $pos) . ',' . $id . ',' . $idColumn . substr($rules, $pos);
+        return $indexArray;
     }
 
+    /**
+     * Returns all rules for a given table
+     *
+     * @param string|object $table The name of the table to analyze
+     * @param array $rules (optional) Additional (user) rules to include
+     *                          These will override the automatically generated rules
+     * @return array  An associative array of columns and delimited string of rules
+     */
+    public function getTableRules($table, $rules = null)
+    {
+        $tableRules = $this->getTableRuleArray($table);
+
+        return $this->combine->tables($rules, $tableRules);
+    }
 
     /**
      * Returns an array of rules for a given database table
      *
-     * @param  string $table    Name of the table for which to get rules
+     * @param string $table Name of the table for which to get rules
      * @return array            rules in a nested associative array
      */
     protected function getTableRuleArray($table)
     {
-        if (! is_string($table))
+        if (!is_string($table))
             throw new InvalidArgumentException;
 
         $rules = [];
         $columns = $this->schema->columns($table);
 
-        foreach($columns as $column) {
+        foreach ($columns as $column) {
             $colName = $column->getName();
 
             // Add generated rules from the database for this column, if any found
@@ -207,51 +241,20 @@ class Generator
     }
 
     /**
-     * Returns an array of rules for a given database column, based on field information
+     * Return the DB-specific rules from all tables in the database
+     * (this does not contain any user-overrides)
      *
-     * @param  Doctrine\DBAL\Schema\Column $col     A database column object (from Doctrine)
-     * @return array                                An array of rules for this column
+     * @return array   An associative array of columns and delimited string of rules
      */
-    protected function getColumnRuleArray($col)
+    public function getAllTableRules()
     {
-        $type = trim($col->getType(), " \\\t\n\r\0\x0B" );
+        $rules = [];
 
-        $className = __NAMESPACE__."\Types\\{$type}Type";
-
-        try {
-            if (class_exists($className))
-                return (new $className)($col);
-        } catch(Types\SkipThisColumn $e) { return []; }
-
-        // catch (\Exception $e) {
-        //     return ['Error: '.$type.' '.$e->getMessage()];
-        // }
-            // do not return anything for non-implemented classes
-        return ['>>>'.$className];
-    }
-
-    /**
-     * Determine whether a given column should include a 'unique' flag
-     *
-     * @param  string $table
-     * @param  string $column
-     * @return array
-     */
-    protected function getIndexRuleArray($table, $column)
-    {
-        // TODO: (maybe) Handle rules for indexes that span multiple columns
-        $indexArray = [];
-        $indexList = $this->schema->indexes($table);
-
-        foreach($indexList as $item) {
-            $cols = $item->getColumns();
-            if(in_array($column, $cols) !== false && count($cols)==1 && $item->isUnique()) {
-
-                $indexArray['unique'] = $table . ',' . $column;
-            }
+        $tables = $this->schema->tables();
+        foreach ($tables as $table) {
+            $rules[$table] = $this->getTableRules($table);
         }
-
-        return $indexArray;
+        return $rules;
     }
 
 }
