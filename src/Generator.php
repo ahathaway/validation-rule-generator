@@ -5,9 +5,11 @@
 
 namespace ahathaway\ValidationRuleGenerator;
 
+use App\Models\BaseModel;
 use Doctrine\DBAL\Exception;
 use InvalidArgumentException;
 use ReflectionClass;
+use ReflectionException;
 
 //use Illuminate\Console\DetectsApplicationNamespace;
 
@@ -26,6 +28,7 @@ class Generator
      * @var Schema
      */
     protected Schema $schema;
+    protected $model_instance;
     /**
      * @var RuleCorrector
      */
@@ -139,22 +142,22 @@ class Generator
 
         return ($column)
             ? $this->getColumnRules($table, $column, $_rules)
-            : $this->getTableRules($table, $_rules);
+            : $this->getTableRules($table, $_rules, $model);
     }
 
     /**
      * @param $model
-     * @return mixed|string[]
+     * @return BaseModel
      */
-    private function getModelInstance($model)
+    public function getModelInstance($model): BaseModel
     {
-        if (is_object($model)) return $model;
+        if (is_object($this->model_instance)) return $this->model_instance;
 
         // $namespace = $this->getAppNamespace();
 
         $modelClass = str_replace('/', '\\', $model);
 
-        return new $modelClass;
+        return $this->model_instance = new $modelClass;
     }
 
     /**
@@ -164,6 +167,7 @@ class Generator
      * @param string $column Name of the column for which to get rules
      * @param string|array $rules Additional information or overrides.
      * @return string           The final calculated rules for this column
+     * @throws ReflectionException
      */
     public function getColumnRules($table, $column, $rules = null)
     {
@@ -184,6 +188,7 @@ class Generator
      *
      * @param Doctrine\DBAL\Schema\Column $col A database column object (from Doctrine)
      * @return array                                An array of rules for this column
+     * @throws ReflectionException
      */
     protected function getColumnRuleArray($col)
     {
@@ -237,9 +242,9 @@ class Generator
      *                          These will override the automatically generated rules
      * @return array  An associative array of columns and delimited string of rules
      */
-    public function getTableRules($table, $rules = null)
+    public function getTableRules($table, $rules = null, $model = null): array
     {
-        $tableRules = $this->getTableRuleArray($table);
+        $tableRules = $this->getTableRuleArray($table, $model);
         $tableRules = $this->correct->parseAndCorrect($tableRules);
         return $this->combine->tables($rules, $tableRules);
     }
@@ -250,7 +255,7 @@ class Generator
      * @param string $table Name of the table for which to get rules
      * @return array            rules in a nested associative array
      */
-    protected function getTableRuleArray($table)
+    protected function getTableRuleArray($table, $model = null)
     {
         if (!is_string($table))
             throw new InvalidArgumentException;
@@ -270,7 +275,9 @@ class Generator
             // Add index rules for this column, if any are found
             $indexRules = $this->getIndexRuleArray($table, $colName);
 
+            // Add foreign key rules for this column, if any are found
             $foreignKeyRules = $this->getForeignKeyRuleArray($table, $colName);
+
 
             if ($columnRules && $indexRules) {
                 $rules[$colName] = array_merge($columnRules, $indexRules);
@@ -279,7 +286,10 @@ class Generator
                 $rules[$colName] = array_merge($rules[$colName], $foreignKeyRules);
             }
         }
-
+        $manyToManyRules = $this->getManyToManyRuleArray($table, $model);
+        if (isset($rules) && !empty($manyToManyRules)) {
+            $rules = array_merge($rules, $manyToManyRules);
+        }
         return $rules;
     }
 
@@ -307,6 +317,35 @@ class Generator
     }
 
     /**
+     * @param string $table
+     * @param string $colName
+     * @param string $model
+     * @return array
+     * @throws Exception
+     */
+    public function getManyToManyRuleArray(string $table, string $model = null)
+    {
+        $instance = $this->getModelInstance($model);
+        $relation_names = $instance->revealBelongsToManyWith();
+        $pivot_rules = [];
+        foreach ($relation_names as $relation_name) {
+            $relation_table = $instance->$relation_name()
+                                       ->getRelated()
+                                       ->getTable();
+            $pivot_rules[$relation_name] = [
+                'nullable' => null,
+                'array'    => null
+            ];
+            $pivot_rules[$relation_name . '.*'] = [
+                'numeric' => null,
+                'min'     => 1,
+                'exists'  => $relation_table . ',id'
+            ];
+        }
+        return $pivot_rules;
+    }
+
+    /**
      * Return the DB-specific rules from all tables in the database
      * (this does not contain any user-overrides)
      *
@@ -322,6 +361,7 @@ class Generator
         }
         return $rules;
     }
+
 
 }
 
