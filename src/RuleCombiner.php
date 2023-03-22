@@ -1,4 +1,7 @@
 <?php
+/*
+ * Copyright (c) Portland Web Design, Inc 2023.
+ */
 
 namespace ahathaway\ValidationRuleGenerator;
 
@@ -7,11 +10,6 @@ class RuleCombiner
     public function tables($set1, $set2)
     {
         return $this->mergeRules($set1, $set2, 'Table');
-    }
-
-    public function columns($set1, $set2)
-    {
-        return $this->mergeRules($set1, $set2, 'Column');
     }
 
     private function mergeRules($set1, $set2, $type)
@@ -29,20 +27,26 @@ class RuleCombiner
         $set2Array = $this->$splitter($set2);
         $merged = array_replace_recursive($set1Array, $set2Array);
 
-        return $this->$joiner($merged);
+        $result = $this->$joiner($merged);
+        return $result;
+    }
+
+    public function columns($set1, $set2)
+    {
+        return $this->mergeRules($set1, $set2, 'Column');
     }
 
     /**
      * Split a given set of rules into an associative array.
      *
-     * @param  string|array  $rules
+     * @param string|array $rules
      * @return array
      */
     private function splitTable($rules)
     {
         $ruleArray = [];
 
-        foreach($rules as $field => $value) {
+        foreach ($rules as $field => $value) {
             $ruleArray[$field] = $this->splitColumn($value);
         }
 
@@ -52,7 +56,7 @@ class RuleCombiner
     /**
      * Split rules for a single field into an array
      *
-     * @param  string|array $rules  Rules in the format 'rule:attribute|rule|rule'
+     * @param string|array $rules Rules in the format 'rule:attribute|rule|rule'
      * @return array                Associative array of all rules
      */
     private function splitColumn($rules)
@@ -74,7 +78,7 @@ class RuleCombiner
      * Parse an individual rule, in the form:
      * 'rule:attribute', or 'rule'
      *
-     * @param  string  $rule
+     * @param string $rule
      * @return array            array of [rule => attribute]
      */
     private function parse($rule)
@@ -84,21 +88,24 @@ class RuleCombiner
         if (strpos($rule, ':') !== false)
             list($rule, $attribute) = explode(':', $rule, 2);
 
-        return array($rule, $attribute);
+        return array(
+            $rule,
+            $attribute
+        );
     }
 
     /**
      * Given a nested array of columns and individual rules,
      * return an array of columns with a delimited string of rules.
      *
-     * @param  array $ruleArray
+     * @param array $ruleArray
      * @return array
      */
     private function joinTable($ruleArray)
     {
         $rules = [];
 
-        foreach($ruleArray as $column => $data) {
+        foreach ($ruleArray as $column => $data) {
             $rules[$column] = $this->joinColumn($data);
         }
 
@@ -109,22 +116,22 @@ class RuleCombiner
      * Given an array of individual rules (eg, ['min'=>2,'exists'=>'countries,code','unique'],
      * return a string delimited by a pipe (eg: 'min:2|exists:countries,code|unique')
      *
-     * @param  array $ruleArray
+     * @param array $ruleArray
      * @return string
      */
     private function joinColumn($ruleArray)
     {
         $rules = '';
 
-        foreach($ruleArray as $key => $value) {
+        foreach ($ruleArray as $key => $value) {
             if (is_null($value)) {
-                $rules .= $key .'|';
+                $rules .= $key . '|';
             } else {
-                $rules .= $key .':'. $value . '|';
+                $rules .= $key . ':' . $value . '|';
             }
         }
 
-        return substr($rules,0,-1);
+        return substr($rules, 0, -1);
     }
 
 }

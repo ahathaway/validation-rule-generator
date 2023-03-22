@@ -5,24 +5,45 @@
 
 namespace ahathaway\ValidationRuleGenerator;
 
+use Doctrine\DBAL\Exception;
 use InvalidArgumentException;
 use ReflectionClass;
 
 //use Illuminate\Console\DetectsApplicationNamespace;
 
+/**
+ * Class Generator
+ */
 class Generator
 {
     // use DetectsApplicationNamespace;
 
-    protected $combine;
-    protected $schema;
+    /**
+     * @var RuleCombiner
+     */
+    protected RuleCombiner $combine;
+    /**
+     * @var Schema
+     */
+    protected Schema $schema;
+    /**
+     * @var RuleCorrector
+     */
+    private RuleCorrector $correct;
 
+    /**
+     * @param $schemaManager
+     */
     public function __construct($schemaManager = null)
     {
         $this->combine = new RuleCombiner;
+        $this->correct = new RuleCorrector();
         $this->schema = new Schema($schemaManager);
     }
 
+    /**
+     * @return static
+     */
     public static function make()
     {
         return new static();
@@ -55,6 +76,12 @@ class Generator
         return $this->getUniqueRules($this->getColumnRules($table, $column, $rules), $id);
     }
 
+    /**
+     * @param $rules
+     * @param $id
+     * @param $idColumn
+     * @return array|mixed|string
+     */
     public function getUniqueRules($rules, $id, $idColumn = 'id')
     {
         if (is_null($id)) return $rules;
@@ -96,7 +123,13 @@ class Generator
         return substr($rules, 0, $pos) . ',' . $id . ',' . $idColumn . substr($rules, $pos);
     }
 
-    public function getModelRules($model, $rules = [], $column = null)
+    /**
+     * @param $model
+     * @param $rules
+     * @param $column
+     * @return array|string
+     */
+    public function getModelRules($model, $rules = [], $column = null): array|string
     {
         $instance = $this->getModelInstance($model);
         // $namespace = $this->getAppNamespace();
@@ -109,6 +142,10 @@ class Generator
             : $this->getTableRules($table, $_rules);
     }
 
+    /**
+     * @param $model
+     * @return mixed|string[]
+     */
     private function getModelInstance($model)
     {
         if (is_object($model)) return $model;
@@ -203,7 +240,7 @@ class Generator
     public function getTableRules($table, $rules = null)
     {
         $tableRules = $this->getTableRuleArray($table);
-
+        $tableRules = $this->correct->parseAndCorrect($tableRules);
         return $this->combine->tables($rules, $tableRules);
     }
 
@@ -226,18 +263,47 @@ class Generator
 
             // Add generated rules from the database for this column, if any found
             $columnRules = $this->getColumnRuleArray($column);
-            if ($columnRules)
+            if ($columnRules) {
                 $rules[$colName] = $columnRules;
+            }
 
             // Add index rules for this column, if any are found
             $indexRules = $this->getIndexRuleArray($table, $colName);
 
+            $foreignKeyRules = $this->getForeignKeyRuleArray($table, $colName);
+
             if ($columnRules && $indexRules) {
                 $rules[$colName] = array_merge($columnRules, $indexRules);
+            }
+            if (isset($rules[$colName]) && !empty($foreignKeyRules)) {
+                $rules[$colName] = array_merge($rules[$colName], $foreignKeyRules);
             }
         }
 
         return $rules;
+    }
+
+    /**
+     * @param string $table
+     * @param string $column
+     * @return array
+     * @throws Exception
+     */
+    public function getForeignKeyRuleArray(string $table, string $column): array
+    {
+        $fkeyList = $this->schema->foreignKeys($table);
+        $fkey_rules = [];
+
+        foreach ($fkeyList as $item) {
+            $cols = $item->getColumns();
+            foreach ($cols as $col) {
+                if ($col == $column) {
+                    $fkey_rules['exists'] = $item->getForeignTableName() . ',' . $item->getForeignColumns()[0];
+                }
+            }
+        }
+
+        return $fkey_rules;
     }
 
     /**

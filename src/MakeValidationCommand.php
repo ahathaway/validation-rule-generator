@@ -1,13 +1,17 @@
 <?php
+/*
+ * Copyright (c) Portland Web Design, Inc 2023.
+ */
 
 namespace ahathaway\ValidationRuleGenerator;
 
 use Illuminate\Console\Command;
 use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Input\InputArgument;
-use InvalidArgumentException;
 
 
+/**
+ * Class MakeValidationCommand
+ */
 class MakeValidationCommand extends Command
 {
 
@@ -26,6 +30,9 @@ class MakeValidationCommand extends Command
     protected $description = 'Generate validation rules for a given model';
 
 
+    /**
+     * @var Generator
+     */
     protected $generator;
 
     /**
@@ -40,7 +47,10 @@ class MakeValidationCommand extends Command
         $this->generator = $generator;
     }
 
-    public function handle()
+    /**
+     * @return void
+     */
+    public function handle(): void
     {
         if ($this->option('all')) {
             var_export($this->generator->getAllTableRules());
@@ -49,14 +59,14 @@ class MakeValidationCommand extends Command
 
         $table = $this->option('table');
         if ($table) {
-            echo $table . ' '.str_repeat('-',min(0,60-strlen($table))).PHP_EOL;
+            echo $table . ' ' . str_repeat('-', min(0, 60 - strlen($table))) . PHP_EOL;
             var_export($this->generator->getTableRules($table));
             return;
         }
 
         $model = $this->option('model');
         if ($model) {
-            echo $model . ' '.str_repeat('-',min(0,60-strlen($model))).PHP_EOL;
+            echo $model . ' ' . str_repeat('-', min(0, 60 - strlen($model))) . PHP_EOL;
             var_export($this->generator->getModelRules($model));
             return;
         }
@@ -69,12 +79,27 @@ class MakeValidationCommand extends Command
      *
      * @return array
      */
-    protected function getOptions()
+    protected function getOptions(): array
     {
         return array(
-            array('model', null, InputOption::VALUE_REQUIRED, 'Model for which to generate rules (include overrides)'),
-            array('table', null, InputOption::VALUE_REQUIRED, 'Table for which to generate rules'),
-            array('all', null, InputOption::VALUE_NONE, 'Generate rules for all tables'),
+            array(
+                'model',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Model for which to generate rules (include overrides)'
+            ),
+            array(
+                'table',
+                null,
+                InputOption::VALUE_REQUIRED,
+                'Table for which to generate rules'
+            ),
+            array(
+                'all',
+                null,
+                InputOption::VALUE_NONE,
+                'Generate rules for all tables'
+            ),
         );
     }
 
